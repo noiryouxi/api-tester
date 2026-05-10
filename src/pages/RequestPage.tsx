@@ -2,11 +2,11 @@ import { useState } from "react";
 import RequestBar from "../components/RequestBar";
 import BodyEditor from "../components/BodyEditor";
 import ResponseViewer from "../components/ResponseViewer";
-import { sendRequest } from "../services/tauri/http";
+import { sendRequest, type HttpMethod } from "../services/tauri/http";
 
 export default function RequestPage() {
   // HTTP 메서드 상태 (GET, POST, PUT, DELETE 등)
-  const [method, setMethod] = useState("POST");
+  const [method, setMethod] = useState<HttpMethod>("POST");
 
   // 요청 URL 상태
   const [url, setUrl] = useState("");

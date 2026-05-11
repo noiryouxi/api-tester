@@ -1,5 +1,6 @@
-use reqwest::{Client, Response};
+use reqwest::{Client, Method, Response};
 use crate::models::http::{HttpRequest, HttpResponse};
+use std::collections::HashMap;
 
 /// HTTP 요청을 실행하는 핵심 함수
 ///
@@ -13,8 +14,12 @@ pub async fn execute(req: HttpRequest) -> Result<HttpResponse, String> {
     // (필요하면 timeout, proxy, retry 등 설정 가능)
     let client = Client::new();
 
+    let method: Method = req.method
+        .parse()
+        .map_err(|e| format!("Invalid HTTP method: {}", e))?;
+
     // method + url 기반으로 요청 빌더 생성
-    let mut builder = client.request(req.method, &req.url);
+    let mut builder = client.request(method, &req.url);
 
     // headers 적용
     // - HashMap<String, String> 형태를 순회하면서 header 추가
@@ -32,6 +37,9 @@ pub async fn execute(req: HttpRequest) -> Result<HttpResponse, String> {
         builder = builder.body(body);
     }
 
+    println!("Method: {:?}", req.method);
+    println!("URL: {}", req.url);
+    
     // 실제 HTTP 요청 실행
     // - 네트워크 에러 발생 시 String으로 변환해서 전달
     let response = builder
@@ -53,16 +61,37 @@ pub async fn execute(req: HttpRequest) -> Result<HttpResponse, String> {
 /// - 현재는 text()만 사용 (binary 응답은 손실됨)
 /// - 필요하면 bytes() 또는 content-type 기반 분기 가능
 async fn build_response(res: Response) -> Result<HttpResponse, String> {
-    // HTTP status code (ex: 200, 404)
-    let status = res.status().as_u16();
+    // status
+    let status = res.status();
 
-    // 응답 body를 문자열로 변환
-    // - UTF-8 기준
-    // - 실패 시 에러 반환
+    // headers 변환
+    let mut headers = HashMap::new();
+    for (key, value) in res.headers().iter() {
+        headers.insert(
+            key.to_string(),
+            value.to_str().unwrap_or("").to_string(),
+        );
+    }
+
+    // body
     let body = res
         .text()
         .await
         .map_err(|e| format!("Failed to read response body: {}", e))?;
 
-    Ok(HttpResponse { status, body })
+    println!("status: {:?}", status);
+    println!("Body: {:?}", body);   
+
+    Ok(HttpResponse {
+        status: status.as_u16(),
+
+        status_text: status
+            .canonical_reason()
+            .unwrap_or("")
+            .to_string(),
+
+        headers,
+
+        body,
+    })
 }

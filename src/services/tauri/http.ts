@@ -4,7 +4,16 @@ import { invoke } from "@tauri-apps/api/core";
  * 지원하는 HTTP 메서드 타입
  * - 문자열 대신 유니온 타입으로 제한해서 오타 방지
  */
-export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+export type HttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "HEAD"
+  | "OPTIONS"
+  | "CONNECT"
+  | "TRACE";
 
 /**
  * 프론트 → Tauri(Rust)로 전달하는 요청 타입
@@ -28,6 +37,8 @@ export interface HttpRequest {
  */
 export interface HttpResponse {
   status: number;
+  status_text: string;
+  headers: Record<string, string>;
   body: string;
 }
 

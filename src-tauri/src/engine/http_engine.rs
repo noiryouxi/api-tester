@@ -2,6 +2,11 @@ use reqwest::{Client, Method, Response};
 use crate::models::http::{HttpRequest, HttpResponse};
 use std::collections::HashMap;
 
+use sqlx::{
+    Pool,
+    Sqlite,
+};
+
 /// HTTP 요청을 실행하는 핵심 함수
 ///
 /// 역할:
@@ -9,7 +14,11 @@ use std::collections::HashMap;
 /// - headers / body를 조건적으로 적용
 /// - 실제 네트워크 요청 수행
 /// - 응답을 HttpResponse로 변환
-pub async fn execute(req: HttpRequest) -> Result<HttpResponse, String> {
+pub async fn execute(
+    req: HttpRequest,
+    db: &Pool<Sqlite>,
+) -> Result<HttpResponse, String> {
+
     // reqwest 클라이언트 생성
     // (필요하면 timeout, proxy, retry 등 설정 가능)
     let client = Client::new();
@@ -24,17 +33,17 @@ pub async fn execute(req: HttpRequest) -> Result<HttpResponse, String> {
     // headers 적용
     // - HashMap<String, String> 형태를 순회하면서 header 추가
     // - 인증 토큰, Content-Type 등 확장 포인트
-    if let Some(headers) = req.headers {
+    if let Some(ref headers) = req.headers {
         for (key, value) in headers {
-            builder = builder.header(&key, &value);
+            builder = builder.header(key, value);
         }
     }
 
     // body 적용
     // - 현재는 Vec<u8> 기반 (텍스트 + 바이너리 모두 대응)
     // - JSON은 상위 레이어에서 serialize 후 전달하는 구조
-    if let Some(body) = req.body {
-        builder = builder.body(body);
+    if let Some(ref body) = req.body {
+        builder = builder.body(body.clone());
     }
 
     println!("Method: {:?}", req.method);
@@ -48,7 +57,50 @@ pub async fn execute(req: HttpRequest) -> Result<HttpResponse, String> {
         .map_err(|e| format!("Request failed: {}", e))?;
 
     // 응답을 공통 HttpResponse 구조로 변환
-    build_response(response).await
+    let http_response = build_response(response).await?;
+
+    // -----------------------------
+    // SQLite history 저장
+    // -----------------------------
+
+    let request_headers = serde_json::to_string(
+        &req.headers.unwrap_or_default()
+    ).unwrap_or_default();
+
+    let request_body = req.body
+    .clone()
+    .unwrap_or_default();
+
+    let response_headers = serde_json::to_string(
+        &http_response.headers
+    ).unwrap_or_default();
+
+    sqlx::query(
+        r#"
+        INSERT INTO http_history (
+            method,
+            url,
+            request_headers,
+            request_body,
+            status,
+            response_headers,
+            response_body
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        "#
+    )
+    .bind(&req.method)
+    .bind(&req.url)
+    .bind(request_headers)
+    .bind(request_body)
+    .bind(http_response.status as i64)
+    .bind(response_headers)
+    .bind(&http_response.body)
+    .execute(db)
+    .await
+    .map_err(|e| format!("Failed to save history: {}", e))?;
+
+    Ok(http_response)
 }
 
 /// reqwest::Response → HttpResponse 변환

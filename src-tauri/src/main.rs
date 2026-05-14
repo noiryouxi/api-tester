@@ -5,29 +5,22 @@ mod models;
 mod engine;
 mod commands;
 
-use engine::db::init_db;
 use commands::http::send_request;
 use tauri::Manager;
-use sqlx::{
-    Pool,
-    Sqlite,
-};
 
-
-#[tokio::main]
-async fn main() {
-    
+fn main() {
 
     tauri::Builder::default()
 
-        // 전역 state 등록
-        .manage(db)
-
         .setup(|app| {
+
             // SQLite 초기화
             let db = tauri::async_runtime::block_on(
-                engine::db::init_db(app.handle())
+                engine::db::init_db(&app.handle())
             ).expect("Failed to init database");
+
+            // 전역 state 등록
+            app.manage(db);
 
             let window = app.get_webview_window("main").unwrap();
 
